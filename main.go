@@ -1,14 +1,12 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"log"
 	"math"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -23,11 +21,10 @@ var (
 	defaultInterval, _ = time.ParseDuration("12h")
 
 	// CLI flags
-	flagAddress    = flag.String("address", "0.0.0.0:9099", "HTTP listen address")
-	flagDomainFile = flag.String("domain-file", "", "Path to file with domains (separated by newlines)")
-	flagInterval   = flag.Duration("interval", defaultInterval, "Interval to check domains at")
-	flagQuiet      = flag.Bool("q", false, "Quiet mode: don't print domains being monitored")
-	flagVersion    = flag.Bool("version", false, "Print the rdap_exporter version")
+	flagAddress  = flag.String("address", "0.0.0.0:9099", "HTTP listen address")
+	flagInterval = flag.Duration("interval", defaultInterval, "Interval to check domains at")
+	flagQuiet    = flag.Bool("q", false, "Quiet mode: don't print domains being monitored")
+	flagVersion  = flag.Bool("version", false, "Print the rdap_exporter version")
 
 	// Prometheus metrics
 	domainExpiration = prometheus.NewGaugeVec(
@@ -83,13 +80,10 @@ func main() {
 
 	log.Printf("starting rdap_exporter (%s)", version)
 
-	// read and verify config file
-	if *flagDomainFile == "" {
-		log.Fatalf("no -domain-file specified")
-	}
-	domains, err := readDomainFile(*flagDomainFile)
+	// read and verify domains from environment
+	domains, err := readDomainsEnv()
 	if err != nil {
-		log.Fatalf("error getting domains %q: %v", *flagDomainFile, err)
+		log.Fatalf("error getting domains: %v", err)
 	}
 	if !*flagQuiet {
 		for i := range domains {
@@ -212,31 +206,20 @@ func (c *checker) getExpiration(d string) (*time.Time, error) {
 	return nil, fmt.Errorf("no expiration event found")
 }
 
-func readDomainFile(where string) ([]string, error) {
-	fullPath, err := filepath.Abs(where)
-	if err != nil {
-		return nil, fmt.Errorf("when expanding %s: %v", *flagDomainFile, err)
+func readDomainsEnv() ([]string, error) {
+	env, ok := os.LookupEnv("RDAP_DOMAINS")
+	if !ok || strings.TrimSpace(env) == "" {
+		return nil, fmt.Errorf("RDAP_DOMAINS environment variable not set")
 	}
-
-	fd, err := os.Open(fullPath)
-	if err != nil {
-		return nil, fmt.Errorf("when opening %s: %v", fullPath, err)
-	}
-	defer fd.Close()
-	r := bufio.NewScanner(fd)
-
-	var domains []string
-	for r.Scan() {
-		d := strings.TrimSpace(r.Text())
-		if d != "" {
-			domains = append(domains, d)
+	parts := strings.FieldsFunc(env, func(r rune) bool {
+		switch r {
+		case ',', '\n', '\t', ' ':
+			return true
 		}
+		return false
+	})
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("no domains provided in RDAP_DOMAINS")
 	}
-	if err := r.Err(); err != nil {
-		return nil, fmt.Errorf("error reading %s: %v", fullPath, err)
-	}
-	if len(domains) == 0 {
-		return nil, fmt.Errorf("no domains found in %s", fullPath)
-	}
-	return domains, nil
+	return parts, nil
 }

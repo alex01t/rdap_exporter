@@ -5,17 +5,12 @@ information.
 
 ## Usage
 
-Create a file containing a list of domains, one per line:
+Provide a list of domains via the `RDAP_DOMAINS` environment variable. Domains
+can be separated by commas, spaces, or newlines:
 
 ```
-example.com
-example.net
-```
-
-Run the exporter and point it at the file:
-
-```
-rdap_exporter -domain-file domains.txt
+export RDAP_DOMAINS="example.com, example.net"
+rdap_exporter
 ```
 
 Metrics are exposed on `:9099/metrics` by default.
@@ -33,6 +28,6 @@ Build and run using Docker:
 
 ```
 docker build -t rdap_exporter .
-docker run -p 9099:9099 -v $(pwd)/domains.txt:/domains.txt rdap_exporter -domain-file /domains.txt
+docker run -p 9099:9099 -e RDAP_DOMAINS="example.com,example.net" rdap_exporter
 ```
 
